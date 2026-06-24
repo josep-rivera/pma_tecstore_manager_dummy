@@ -17,8 +17,9 @@ enum FirestoreConfig {
 // MARK: - Collection Name Constants
 
 enum Collections {
-    static let usuarios  = "usuarios"
-    static let productos = "productos"
-    static let clientes  = "clientes"
-    static let ventas    = "ventas"
+    static let usuarios       = "usuarios"
+    static let productos      = "productos"
+    static let clientes       = "clientes"
+    static let ventas         = "ventas"
+    static let detallesVenta  = "detalles_venta"
 }

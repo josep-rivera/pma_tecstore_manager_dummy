@@ -127,6 +127,7 @@ final class VentaService {
                   let fresh = freshProducts[productID] else { return nil }
             return FBDetalleVenta(
                 id:                UUID().uuidString,
+                ventaId:           ventaRef.documentID,
                 productoId:        productID,
                 productoNombre:    fresh.nombre,
                 productoCodigo:    fresh.codigo,
@@ -157,11 +158,17 @@ final class VentaService {
             detalles:       detalles
         )
 
-        // 6. Build WriteBatch: venta doc + stock decrements
+        // 6. Build WriteBatch: venta doc + detalles collection + stock decrements
         let batch = FirestoreService.batch()
 
         // Encode and set the venta document
         try batch.setData(from: venta, forDocument: ventaRef)
+
+        // Write each detalle as its own document in /detalles_venta
+        for detalle in detalles {
+            let ref = db.collection(Collections.detallesVenta).document(detalle.id)
+            try batch.setData(from: detalle, forDocument: ref)
+        }
 
         // Decrement stock for each product
         for item in items {

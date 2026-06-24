@@ -92,6 +92,7 @@ struct FBCliente: Codable, Identifiable, Hashable {
 
 struct FBDetalleVenta: Codable {
     var id: String
+    var ventaId: String?        // set when written to /detalles_venta collection
     var productoId: String
     var productoNombre: String
     var productoCodigo: String

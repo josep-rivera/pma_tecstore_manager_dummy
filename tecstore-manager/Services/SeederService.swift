@@ -96,7 +96,7 @@ final class SeederService {
     // MARK: - Wipe
 
     private func clearAllCollections() async throws {
-        for name in [Collections.ventas, Collections.clientes, Collections.productos, Collections.usuarios] {
+        for name in [Collections.detallesVenta, Collections.ventas, Collections.clientes, Collections.productos, Collections.usuarios] {
             let snap = try await db.collection(name).getDocuments()
             for doc in snap.documents { try await doc.reference.delete() }
         }
@@ -242,6 +242,7 @@ final class SeederService {
             let cliente = clientes[ci]
             let usuario = users[ui % users.count]
 
+            let ventaRef = db.collection(Collections.ventas).document()
             let pool = Array(sellable.shuffled().prefix(pickCount))
             var detalles: [FBDetalleVenta] = []
             var subtotal: Double = 0
@@ -257,6 +258,7 @@ final class SeederService {
 
                 detalles.append(FBDetalleVenta(
                     id:                UUID().uuidString,
+                    ventaId:           ventaRef.documentID,
                     productoId:        productID,
                     productoNombre:    producto.nombre,
                     productoCodigo:    producto.codigo,
@@ -273,7 +275,6 @@ final class SeederService {
             let igv   = (subtotal * 0.18 * 100).rounded() / 100
             let total = subtotal + igv
 
-            let ventaRef = db.collection(Collections.ventas).document()
             let venta = FBVenta(
                 id:             ventaRef.documentID,
                 fechaVenta:     daysAgo(days),
@@ -289,6 +290,11 @@ final class SeederService {
                 detalles:       detalles
             )
             try batch.setData(from: venta, forDocument: ventaRef)
+
+            for detalle in detalles {
+                let ref = db.collection(Collections.detallesVenta).document(detalle.id)
+                try batch.setData(from: detalle, forDocument: ref)
+            }
         }
 
         for (productID, newStock) in stockMap {

@@ -122,6 +122,7 @@ final class VentaService {
         }
 
         // 3. Build embedded detalles with denormalized product snapshots
+        let ventaRef = db.collection(Collections.ventas).document()
         let detalles: [FBDetalleVenta] = items.compactMap { item in
             guard let productID = item.producto.id,
                   let fresh = freshProducts[productID] else { return nil }
@@ -142,7 +143,6 @@ final class VentaService {
         let (subtotal, igv, total) = calculateTotals(for: items)
 
         // 5. Build the FBVenta
-        let ventaRef = db.collection(Collections.ventas).document()
         let venta = FBVenta(
             id:             ventaRef.documentID,
             fechaVenta:     Date(),

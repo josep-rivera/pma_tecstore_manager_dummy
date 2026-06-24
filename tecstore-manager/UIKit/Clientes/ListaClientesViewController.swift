@@ -2,10 +2,8 @@ import UIKit
 
 final class ListaClientesViewController: UIViewController {
 
-    // MARK: - Data
-    private var allClientes:      [FBCliente] = []
-    private var filteredClientes: [FBCliente] = []
-    private var activeFilter: Int = 0   // 0=Todos 1=Activos 2=Inactivos
+    // MARK: - ViewModel
+    private let viewModel = ListaClientesViewModel()
 
     // MARK: - IBOutlets
     @IBOutlet weak var tableView: UITableView!
@@ -24,11 +22,22 @@ final class ListaClientesViewController: UIViewController {
         setupTableView()
         setupEmptyLabel()
         setupConstraints()
+        bindViewModel()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        loadData()
+        viewModel.loadData()
+    }
+
+    private func bindViewModel() {
+        viewModel.onReload = { [weak self] in self?.tableView.reloadData() }
+        viewModel.onEmptyStateChanged = { [weak self] isEmpty in self?.emptyLabel.isHidden = !isEmpty }
+        viewModel.onFilterActiveChanged = { [weak self] isActive in
+            let icon = isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+            self?.filterButton.image = UIImage(systemName: icon)
+            self?.filterButton.tintColor = isActive ? .brandPrimary : nil
+        }
     }
 
     // MARK: - Setup
@@ -75,44 +84,14 @@ final class ListaClientesViewController: UIViewController {
         view.backgroundColor = .appBackground
     }
 
-    // MARK: - Data
-
-    private func loadData() {
-        Task {
-            let clientes = (try? await ClienteService.shared.fetchAll()) ?? []
-            await MainActor.run { self.allClientes = clientes; self.applyFilters() }
-        }
-    }
-
-    private func applyFilters() {
-        let text = searchController.searchBar.text?.trimmed ?? ""
-        var result = text.isEmpty ? allClientes : allClientes.filter {
-            $0.fullName.localizedCaseInsensitiveContains(text) || $0.dniValue.contains(text)
-        }
-        switch activeFilter {
-        case 1: result = result.filter {  $0.isActive }
-        case 2: result = result.filter { !$0.isActive }
-        default: break
-        }
-        filteredClientes = result
-        tableView.reloadData()
-        emptyLabel.isHidden = !filteredClientes.isEmpty
-        let icon = activeFilter == 0
-            ? "line.3.horizontal.decrease.circle"
-            : "line.3.horizontal.decrease.circle.fill"
-        filterButton.image = UIImage(systemName: icon)
-        filterButton.tintColor = activeFilter == 0 ? nil : .brandPrimary
-    }
-
     // MARK: - Actions
 
     @objc private func showFilterSheet() {
         let titles = ["Todos", "Activos", "Inactivos"]
         let alert  = UIAlertController(title: "Filtrar clientes", message: nil, preferredStyle: .actionSheet)
         titles.enumerated().forEach { idx, name in
-            let action = UIAlertAction(title: idx == activeFilter ? "✓ \(name)" : name, style: .default) { [weak self] _ in
-                self?.activeFilter = idx
-                self?.applyFilters()
+            let action = UIAlertAction(title: idx == viewModel.activeFilter ? "✓ \(name)" : name, style: .default) { [weak self] _ in
+                self?.viewModel.setFilter(idx)
             }
             alert.addAction(action)
         }
@@ -125,25 +104,27 @@ final class ListaClientesViewController: UIViewController {
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let dest = segue.destination as? FormularioClienteViewController {
             dest.cliente = nil
-            dest.onSave = { [weak self] in self?.loadData() }
+            dest.onSave = { [weak self] in self?.viewModel.loadData() }
         } else if let dest = segue.destination as? DetalleClienteViewController {
             guard let ip = tableView.indexPathForSelectedRow else { return }
-            dest.cliente = filteredClientes[ip.row]
+            dest.cliente = viewModel.filteredClientes[ip.row]
         }
     }
 }
 
 extension ListaClientesViewController: UISearchResultsUpdating {
-    func updateSearchResults(for searchController: UISearchController) { applyFilters() }
+    func updateSearchResults(for searchController: UISearchController) {
+        viewModel.applyFilters(searchText: searchController.searchBar.text?.trimmed ?? "")
+    }
 }
 
 extension ListaClientesViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        filteredClientes.count
+        viewModel.filteredClientes.count
     }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ClienteCell.reuseID, for: indexPath) as! ClienteCell
-        cell.configure(with: filteredClientes[indexPath.row])
+        cell.configure(with: viewModel.filteredClientes[indexPath.row])
         return cell
     }
 }
@@ -155,7 +136,7 @@ extension ListaClientesViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView,
                    trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let cliente = filteredClientes[indexPath.row]
+        let cliente = viewModel.filteredClientes[indexPath.row]
         let delete  = UIContextualAction(style: .destructive, title: "Eliminar") { [weak self] _, _, done in
             self?.confirmDelete(cliente: cliente)
             done(true)
@@ -169,7 +150,7 @@ extension ListaClientesViewController: UITableViewDelegate {
             title:   "Eliminar cliente",
             message: "¿Eliminar a \"\(cliente.fullName)\"? Esta acción no se puede deshacer."
         ) { [weak self] in
-            Task { try? await ClienteService.shared.delete(cliente); await MainActor.run { self?.loadData() } }
+            self?.viewModel.deleteCliente(cliente)
         }
     }
 }

@@ -47,7 +47,7 @@ struct AcercaDeView: View {
                 LabeledContent("Base de datos", value: "Firebase Firestore")
                 LabeledContent("Mapas",       value: "MapKit + CoreLocation")
                 LabeledContent("Plataforma",  value: "iOS 17+")
-                LabeledContent("Arquitectura", value: "MVC (UIKit) · MVVM (SwiftUI)")
+                LabeledContent("Arquitectura", value: "MVVM")
             }
 
             // Funcionalidades

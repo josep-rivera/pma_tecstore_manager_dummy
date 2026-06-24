@@ -2,10 +2,8 @@ import UIKit
 
 final class ListaProductosViewController: UIViewController {
 
-    // MARK: - Data
-    private var allProductos:      [FBProducto] = []
-    private var filteredProductos: [FBProducto] = []
-    private var activeFilter: Int = 0   // 0=Todos 1=Con stock 2=Sin stock
+    // MARK: - ViewModel
+    private let viewModel = ListaProductosViewModel()
 
     // MARK: - IBOutlets
     @IBOutlet weak var segmentedControl: UISegmentedControl!
@@ -25,11 +23,17 @@ final class ListaProductosViewController: UIViewController {
         setupTableView()
         setupEmptyLabel()
         setupConstraints()
+        bindViewModel()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        loadData()
+        viewModel.loadData()
+    }
+
+    private func bindViewModel() {
+        viewModel.onReload = { [weak self] in self?.tableView.reloadData() }
+        viewModel.onEmptyStateChanged = { [weak self] isEmpty in self?.emptyLabel.isHidden = !isEmpty }
     }
 
     // MARK: - Setup
@@ -73,37 +77,10 @@ final class ListaProductosViewController: UIViewController {
         view.backgroundColor = .appBackground
     }
 
-    // MARK: - Data
-
-    private func loadData() {
-        Task {
-            let productos = (try? await ProductoService.shared.fetchAll()) ?? []
-            await MainActor.run { self.allProductos = productos; self.applyFilters() }
-        }
-    }
-
-    private func applyFilters() {
-        let text = searchController.searchBar.text?.trimmed ?? ""
-        var result = text.isEmpty ? allProductos : allProductos.filter {
-            $0.productName.localizedCaseInsensitiveContains(text) ||
-            $0.productCode.localizedCaseInsensitiveContains(text) ||
-            $0.categoryValue.localizedCaseInsensitiveContains(text)
-        }
-        switch activeFilter {
-        case 1: result = result.filter {  $0.hasStock }
-        case 2: result = result.filter { !$0.hasStock }
-        default: break
-        }
-        filteredProductos = result
-        tableView.reloadData()
-        emptyLabel.isHidden = !filteredProductos.isEmpty
-    }
-
     // MARK: - Actions
 
     @IBAction @objc private func segmentChanged(_ sender: UISegmentedControl) {
-        activeFilter = segmentedControl.selectedSegmentIndex
-        applyFilters()
+        viewModel.setFilter(segmentedControl.selectedSegmentIndex)
     }
 
     // MARK: - Navigation
@@ -111,10 +88,10 @@ final class ListaProductosViewController: UIViewController {
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         if let dest = segue.destination as? FormularioProductoViewController {
             dest.producto = nil
-            dest.onSave   = { [weak self] in self?.loadData() }
+            dest.onSave   = { [weak self] in self?.viewModel.loadData() }
         } else if let dest = segue.destination as? DetalleProductoViewController {
             guard let ip = tableView.indexPathForSelectedRow else { return }
-            dest.producto = filteredProductos[ip.row]
+            dest.producto = viewModel.filteredProductos[ip.row]
         }
     }
 }
@@ -123,7 +100,7 @@ final class ListaProductosViewController: UIViewController {
 
 extension ListaProductosViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
-        applyFilters()
+        viewModel.applyFilters(searchText: searchController.searchBar.text?.trimmed ?? "")
     }
 }
 
@@ -131,12 +108,12 @@ extension ListaProductosViewController: UISearchResultsUpdating {
 
 extension ListaProductosViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        filteredProductos.count
+        viewModel.filteredProductos.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ProductoCell.reuseID, for: indexPath) as! ProductoCell
-        cell.configure(with: filteredProductos[indexPath.row])
+        cell.configure(with: viewModel.filteredProductos[indexPath.row])
         return cell
     }
 }
@@ -152,21 +129,21 @@ extension ListaProductosViewController: UITableViewDelegate {
         _ tableView: UITableView,
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
-        let product = filteredProductos[indexPath.row]
+        let product = viewModel.filteredProductos[indexPath.row]
         let delete  = UIContextualAction(style: .destructive, title: "Eliminar") { [weak self] _, _, completion in
-            self?.confirmDelete(product: product, at: indexPath)
+            self?.confirmDelete(product: product)
             completion(true)
         }
         delete.image = UIImage(systemName: "trash")
         return UISwipeActionsConfiguration(actions: [delete])
     }
 
-    private func confirmDelete(product: FBProducto, at indexPath: IndexPath) {
+    private func confirmDelete(product: FBProducto) {
         showDestructiveConfirmation(
             title:   "Eliminar producto",
             message: "¿Eliminar \"\(product.productName)\"? Esta acción no se puede deshacer."
         ) { [weak self] in
-            Task { try? await ProductoService.shared.delete(product); await MainActor.run { self?.loadData() } }
+            self?.viewModel.deleteProducto(product)
         }
     }
 }

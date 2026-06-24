@@ -3,6 +3,9 @@ import MapKit
 
 final class DetalleClienteViewController: UIViewController {
 
+    // MARK: - ViewModel
+    private let viewModel = DetalleClienteViewModel()
+
     // MARK: - Data
     var cliente: FBCliente?
 
@@ -35,13 +38,13 @@ final class DetalleClienteViewController: UIViewController {
         super.viewDidLoad()
         setupView()
         setupIBOutletStyling()
+        viewModel.onClienteUpdated = { [weak self] updated in self?.cliente = updated; self?.populate() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         populate()
-        guard let cliente else { return }
-        Task { if let updated = try? await ClienteService.shared.fetch(byID: cliente.id ?? "") { await MainActor.run { self.cliente = updated; self.populate() } } }
+        viewModel.refresh(clienteID: cliente?.id ?? "")
     }
 
     // MARK: - Setup

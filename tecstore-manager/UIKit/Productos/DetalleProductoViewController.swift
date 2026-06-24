@@ -2,6 +2,9 @@ import UIKit
 
 final class DetalleProductoViewController: UIViewController {
 
+    // MARK: - ViewModel
+    private let viewModel = DetalleProductoViewModel()
+
     // MARK: - Data
     var producto: FBProducto?
 
@@ -36,14 +39,14 @@ final class DetalleProductoViewController: UIViewController {
         super.viewDidLoad()
         setupView()
         setupIBOutletStyling()
+        viewModel.onProductoUpdated = { [weak self] updated in self?.producto = updated; self?.populate() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
         populate()
-        guard let producto else { return }
-        Task { if let updated = try? await ProductoService.shared.fetch(byID: producto.id ?? "") { await MainActor.run { self.producto = updated; self.populate() } } }
+        viewModel.refresh(productoID: producto?.id ?? "")
     }
 
     // MARK: - Setup
